@@ -52,27 +52,27 @@ func readUrl(url string, hosts chan<- hostResult) {
 	}
 }
 
-func writeHosts(hostTemplate string, hosts <-chan hostResult, done chan<- error) {
+func writeHosts(hostTemplate string, hosts <-chan hostResult) error {
 	tmpl, err := template.New("block line").Parse(hostTemplate + "\n")
 	if err != nil {
-		done <- fmt.Errorf("error while parsing template: %s", err)
+		return fmt.Errorf("error while parsing template: %s", err)
 	}
 
 	uniqueHosts := mapset.NewSet[string]()
 
 	for item := range hosts {
 		if item.err != nil {
-			done <- fmt.Errorf("error while gathering: %s", item.err)
+			return fmt.Errorf("error while gathering: %s", item.err)
 		}
 
 		if uniqueHosts.Add(item.host) {
 			err = tmpl.Execute(os.Stdout, TemplateData{Host: item.host})
 			if err != nil {
-				done <- fmt.Errorf("error while executing template: %s", err)
+				return fmt.Errorf("error while executing template: %s", err)
 			}
 		}
 	}
-	done <- nil
+	return nil
 }
 
 func main() {
@@ -81,7 +81,6 @@ func main() {
 	}
 
 	hosts := make(chan hostResult)
-	doneWriting := make(chan error)
 
 	configFile := os.Args[1]
 	var conf Config
@@ -89,8 +88,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("error while parsing configuration: %s", err)
 	}
-
-	go writeHosts(conf.Template, hosts, doneWriting)
 
 	var wg sync.WaitGroup
 	for _, list := range conf.Lists {
@@ -106,7 +103,7 @@ func main() {
 		close(hosts)
 	}()
 
-	err = <-doneWriting
+	err = writeHosts(conf.Template, hosts)
 	if err != nil {
 		log.Fatalf("error while writing: %s", err)
 	}
