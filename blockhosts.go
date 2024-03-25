@@ -66,7 +66,7 @@ func writeHosts(outfile string, hostTemplate string, hosts <-chan hostResult) er
 		return fmt.Errorf("error while parsing template: %s", err)
 	}
 
-	uniqueHosts := mapset.NewSet[string]()
+	uniqueHosts := mapset.NewThreadUnsafeSet[string]()
 
 	var writer *bufio.Writer
 	if outfile != "" {
