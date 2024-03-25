@@ -15,17 +15,6 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
-var outfileFlag string
-
-func init() {
-	const (
-		outputDefault = ""
-		outputUsage   = "output file"
-	)
-	flag.StringVar(&outfileFlag, "outfile", outputDefault, outputUsage)
-	flag.StringVar(&outfileFlag, "o", outputDefault, outputUsage+" (shorthand)")
-}
-
 type Config struct {
 	Template string
 	Lists    []string
@@ -97,6 +86,14 @@ func writeHosts(outfile string, hostTemplate string, hosts <-chan hostResult) er
 }
 
 func main() {
+	const (
+		outputDefault = ""
+		outputUsage   = "output file"
+	)
+	var output string
+	flag.StringVar(&output, "output", outputDefault, outputUsage)
+	flag.StringVar(&output, "o", outputDefault, outputUsage+" (shorthand)")
+
 	flag.Parse()
 	if flag.NArg() == 0 {
 		log.Fatalln("no config file given on command line")
@@ -125,7 +122,7 @@ func main() {
 		close(hosts)
 	}()
 
-	err = writeHosts(outfileFlag, conf.Template, hosts)
+	err = writeHosts(output, conf.Template, hosts)
 	if err != nil {
 		log.Fatalf("error while writing: %s", err)
 	}
