@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"html/template"
 	"log"
@@ -13,6 +14,17 @@ import (
 	"github.com/BurntSushi/toml"
 	mapset "github.com/deckarep/golang-set/v2"
 )
+
+var outfileFlag string
+
+func init() {
+	const (
+		outputDefault = ""
+		outputUsage   = "output file"
+	)
+	flag.StringVar(&outfileFlag, "outfile", outputDefault, outputUsage)
+	flag.StringVar(&outfileFlag, "o", outputDefault, outputUsage+" (shorthand)")
+}
 
 type Config struct {
 	Template string
@@ -26,10 +38,6 @@ type TemplateData struct {
 type hostResult struct {
 	err  error
 	host string
-}
-
-type writeResult struct {
-	err error
 }
 
 func readUrl(url string, hosts chan<- hostResult) {
@@ -52,7 +60,7 @@ func readUrl(url string, hosts chan<- hostResult) {
 	}
 }
 
-func writeHosts(hostTemplate string, hosts <-chan hostResult) error {
+func writeHosts(outfile string, hostTemplate string, hosts <-chan hostResult) error {
 	tmpl, err := template.New("block line").Parse(hostTemplate + "\n")
 	if err != nil {
 		return fmt.Errorf("error while parsing template: %s", err)
@@ -60,29 +68,43 @@ func writeHosts(hostTemplate string, hosts <-chan hostResult) error {
 
 	uniqueHosts := mapset.NewSet[string]()
 
+	var writer *bufio.Writer
+	if outfile != "" {
+		file, err := os.OpenFile(outfile, os.O_WRONLY|os.O_CREATE, 0644)
+		if err != nil {
+			return fmt.Errorf("error while opening file '%s': %s", outfile, err)
+		}
+		defer file.Close()
+		writer = bufio.NewWriter(file)
+	} else {
+		writer = bufio.NewWriter(os.Stdout)
+	}
+
 	for item := range hosts {
 		if item.err != nil {
 			return fmt.Errorf("error while gathering: %s", item.err)
 		}
 
 		if uniqueHosts.Add(item.host) {
-			err = tmpl.Execute(os.Stdout, TemplateData{Host: item.host})
+			err = tmpl.Execute(writer, TemplateData{Host: item.host})
 			if err != nil {
 				return fmt.Errorf("error while executing template: %s", err)
 			}
 		}
 	}
+	writer.Flush()
 	return nil
 }
 
 func main() {
-	if len(os.Args) <= 1 {
+	flag.Parse()
+	if flag.NArg() == 0 {
 		log.Fatalln("no config file given on command line")
 	}
 
 	hosts := make(chan hostResult)
 
-	configFile := os.Args[1]
+	configFile := flag.Arg(0)
 	var conf Config
 	_, err := toml.DecodeFile(configFile, &conf)
 	if err != nil {
@@ -103,7 +125,7 @@ func main() {
 		close(hosts)
 	}()
 
-	err = writeHosts(conf.Template, hosts)
+	err = writeHosts(outfileFlag, conf.Template, hosts)
 	if err != nil {
 		log.Fatalf("error while writing: %s", err)
 	}
