@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/BurntSushi/toml"
 	mapset "github.com/deckarep/golang-set/v2"
@@ -31,7 +32,7 @@ type writeResult struct {
 	err error
 }
 
-func readUrl(url string, hosts chan<- hostResult, done chan<- struct{}) {
+func readUrl(url string, hosts chan<- hostResult) {
 	resp, err := http.Get(url)
 	if err != nil {
 		hosts <- hostResult{err: err}
@@ -49,7 +50,6 @@ func readUrl(url string, hosts chan<- hostResult, done chan<- struct{}) {
 	if err := scanner.Err(); err != nil {
 		hosts <- hostResult{err: err}
 	}
-	done <- struct{}{}
 }
 
 func writeHosts(hostTemplate string, hosts <-chan hostResult, done chan<- error) {
@@ -81,7 +81,6 @@ func main() {
 	}
 
 	hosts := make(chan hostResult)
-	doneGathering := make(chan struct{})
 	doneWriting := make(chan error)
 
 	configFile := os.Args[1]
@@ -92,10 +91,21 @@ func main() {
 	}
 
 	go writeHosts(conf.Template, hosts, doneWriting)
-	go readUrl(conf.Lists[0], hosts, doneGathering)
 
-	<-doneGathering
-	close(hosts)
+	var wg sync.WaitGroup
+	for _, list := range conf.Lists {
+		wg.Add(1)
+		go func(url string) {
+			defer wg.Done()
+			readUrl(url, hosts)
+		}(list)
+	}
+
+	go func() {
+		wg.Wait()
+		close(hosts)
+	}()
+
 	err = <-doneWriting
 	if err != nil {
 		log.Fatalf("error while writing: %s", err)
