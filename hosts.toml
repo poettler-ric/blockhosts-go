@@ -1,0 +1,6 @@
+lists = [
+  "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+  "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn/hosts",
+]
+
+template = "local-zone: {{ .Host }} always_nxdomain"
